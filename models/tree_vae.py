@@ -94,6 +94,8 @@ class TreeVAE(BaseVAE):
         self.T = torch.tensor(self.T).cuda().float()
         self.T = self.T / self.T.max()
         self.inv_T = self.T.inverse()
+        self.ordered_genera = self.get_ordered_genera()
+        self.reordered_indices = [self.species.index(x) for x in self.ordered_genera]
 
         modules = []
         if hidden_dims is None:
@@ -158,6 +160,52 @@ class TreeVAE(BaseVAE):
 
         self.decoder = nn.Sequential(*modules)
 
+    def heatmap(self, cov):
+        import seaborn as sns
+        import matplotlib.pyplot as plt
+
+        plt.figure()
+        sns.heatmap(cov[np.ix_(self.reordered_indices, self.reordered_indices)])
+
+    def get_ordered_genera(self):
+        # fmt: off
+        return ['Xylosandrus', 'Aeolus', 'Pyropyga', 'Carpophilus', 'Liriomyza',
+       'Phytomyza', 'Botanophila', 'Dilophus', 'Bezzimyia', 'Prodiplosis',
+       'Campylomyza', 'Culicoides', 'Forcipomyia', 'Chironomus',
+       'Dicrotendipes', 'Microtendipes', 'Micropsectra', 'Paratanytarsus',
+       'Rheotanytarsus', 'Tanytarsus', 'Allocladius', 'Chaetocladius',
+       'Cricotopus', 'Diplocladius', 'Halocladius', 'Limnophyes',
+       'Metriocnemus', 'Paraphaenocladius', 'Smittia', 'Ablabesmyia',
+       'ChiroGn1', 'chiroJanzen01', 'Achradocera', 'Medetera',
+       'Drosophila', 'Hirtodrosophila', 'Porphyrochroa', 'Rhamphomyia',
+       'Fannia', 'Heleomyza', 'Platypalpus', 'Trichina', 'Ormosia',
+       'Atherigona', 'Coenosia', 'Neodexiopsis', 'Musca', 'Macgrathphora',
+       'Megaselia', 'Lutzomyia', 'Psychoda', 'Macrostenomyia', 'Scatopse',
+       'Bradysia', 'Camptochaeta', 'Corynoptera', 'Cosmosciara',
+       'Cratyna', 'Lycoriella', 'Peyerimhoffia', 'Pseudosciara',
+       'Scatopsciara', 'Themira', 'Simulium', 'Bifronsina', 'Chespiritos',
+       'Leptocera', 'Pseudocollinella', 'Pullimosina', 'Rachispoda',
+       'Rudolfina', 'Ischiolepta', 'Hermetia', 'Phytomyptera',
+       'Paradidyma', 'Trichocera', 'Physiphora', 'Aleurotrachelus',
+       'Bemisia', 'Trialeurodes', 'Rhopalosiphum', 'Euceraphis',
+       'Empoasca', 'Dinotrema', 'alyMalaise01', 'Blacus', 'Diospilus',
+       'Chelonus', 'Ecphylus', 'Heterospilus', 'Meteorus', 'Leiophron',
+       'Hormius', 'Apanteles', 'Cotesia', 'Diolcogaster',
+       'Dolichogenidea', 'Glyptapanteles', 'Pseudapanteles',
+       'mgMalaise160', 'Pambolus', 'encyrMalaise01', 'Palmistichus',
+       'euloMalaise01', 'Procryptocerus', 'ichneuMalaise01', 'Hypsicera',
+       'Chilocyrtus', 'Orthocentrus', 'Plectiscus', 'Stenomacrus',
+       'Tersilochus', 'tersiMalaise01', 'Anagrus', 'Glyphidocera',
+       'Taygete', 'blastoBioLep01', 'cosmoBioLep01', 'Cosmopterix',
+       'cosmoMalaise01', 'Argyria', 'cramMalaise75', 'Antaeotricha',
+       'Battaristis', 'Aristotelia', 'Dichomeris', 'Tuta', 'Sinoe',
+       'Telphusa', 'gelBioLep01', 'gelBioLep1', 'gelMalaise01',
+       'geleBioLep01', 'Glyphipterix', 'malaiseGraci01',
+       'malaiseGraci01 Malaise4560', 'Stigmella', 'Idioglossa',
+       'oecoMalaise01', 'Plutella', 'phyMalaise01', 'tinBioLep01',
+       'Lepidopsocus', 'Thrips']
+        # fmt: on
+
     def calc_T(self):
         t = self.tree.copy()
         t = my_convert_to_ultrametric(t)
@@ -198,8 +246,8 @@ class TreeVAE(BaseVAE):
         # Split the result into mu and var components
         # of the latent Gaussian distribution
         mu = self.fc_mu(result).view(-1, 6, 144)
-        logvar = self.fc_var(result)
-        logvar = logvar.view(-1, 144, 144)
+        logA = self.fc_var(result)
+        logA = logA.view(-1, 144, 144)
 
         # To make sure std is a positive definite matrix,
         # multiply it by it's transpose, add a small eps to the diagonal,
@@ -215,7 +263,7 @@ class TreeVAE(BaseVAE):
         # if torch.linalg.eigvals(torch.exp(0.5 * logvar)).real.min() < 0:
         #    wtf
 
-        return [mu, logvar]
+        return [mu, logA]
 
     def decode(self, z: Tensor) -> Tensor:
         """
@@ -230,7 +278,7 @@ class TreeVAE(BaseVAE):
         result = F.softmax(result, dim=1)
         return result
 
-    def reparameterize(self, mu: Tensor, logvar: Tensor) -> Tensor:
+    def reparameterize(self, mu: Tensor, logA: Tensor) -> Tensor:
         """
         Reparameterization trick to sample from N(mu, var) from
         N(0,1).
@@ -238,7 +286,7 @@ class TreeVAE(BaseVAE):
         :param logvar: (Tensor) Standard deviation of the latent Gaussian [B x D]
         :return: (Tensor) [B x D]
         """
-        std = torch.exp(0.5 * logvar)
+        std = torch.exp(0.5 * logA)
         # heavily based on https://juanitorduz.github.io/multivariate_normal/
 
         # L = torch.linalg.cholesky(std)
@@ -270,12 +318,12 @@ class TreeVAE(BaseVAE):
         input = args[1]
         input = input.view(-1, 5, 836, 144)
         mu = args[2]
-        logvar = args[3]
+        logA = args[3]
         labels = kwargs["labels"]
 
-        std = torch.exp(0.5 * logvar)  # 0.5 since std**2 = var
+        std = torch.exp(0.5 * logA)  # 0.5 since std**2 = var
         cov_q = torch.matmul(std, std.transpose(2, 1))
-        logvar = 2 * torch.log(cov_q)
+        logvar = torch.log(cov_q)
 
         kld_weight = kwargs["M_N"]  # Account for the minibatch samples from the dataset
         recons_loss = F.mse_loss(recons, input)
@@ -283,17 +331,21 @@ class TreeVAE(BaseVAE):
         def trace(X):
             return torch.einsum("...ii", X)
 
-        kld_loss = 0.5 * torch.mean(
-            -144 + torch.log(torch.det(self.T))
-            # - trace(logvar)
-            # - torch.log(torch.det(torch.exp(logvar)))
-            - torch.sum(torch.linalg.eigvals(logvar).real, dim=1)
-            + trace(
-                torch.matmul(
-                    torch.matmul(mu.view(-1, 144), self.inv_T), mu.view(-1, 144).T
+        def my_matmul(A, B):
+            return torch.einsum("...ik,...jk", A, B)
+
+        kld_loss = torch.mean(
+            0.5
+            * torch.mean(
+                # +trace(torch.log(self.T)) # constant
+                -torch.sum(torch.linalg.eigvalsh(logvar).real, dim=1).unsqueeze(1)
+                + torch.diagonal(
+                    my_matmul(my_matmul(mu, self.inv_T), mu), dim1=1, dim2=2
                 )
-            )
-            + trace(torch.matmul(self.inv_T, cov_q)),
+                + trace(torch.matmul(self.inv_T, cov_q)).unsqueeze(1)
+                - 144,
+                dim=1,
+            ),
             dim=0,
         )
 
