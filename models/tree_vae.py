@@ -6,6 +6,8 @@ from torch import nn
 from tqdm import tqdm
 from torch.nn import functional as F
 from .types_ import *
+import seaborn as sns
+import matplotlib.pyplot as plt
 
 
 # from ete3 tutorial
@@ -80,7 +82,7 @@ class TreeVAE(BaseVAE):
         latent_dim: int,
         hidden_dims: List = None,
         phylo_path=None,
-        **kwargs
+        **kwargs,
     ) -> None:
         super(TreeVAE, self).__init__()
 
@@ -94,7 +96,7 @@ class TreeVAE(BaseVAE):
         self.reordered_indices = [self.species.index(x) for x in self.ordered_genera]
 
         self.T = torch.tensor(self.T).cuda().float()
-        self.T = self.T / self.T.max()
+        # self.T = self.T / self.T.max()
         self.T = self.reorder_indices(self.T)
         self.species = self.get_ordered_genera()
 
@@ -168,9 +170,6 @@ class TreeVAE(BaseVAE):
         return A[np.ix_(self.reordered_indices, self.reordered_indices)]
 
     def heatmap(self, cov):
-        import seaborn as sns
-        import matplotlib.pyplot as plt
-
         plt.figure()
         sns.heatmap(cov)
 
@@ -254,13 +253,13 @@ class TreeVAE(BaseVAE):
         # of the latent Gaussian distribution
         mu = self.fc_mu(result).view(-1, 6, 144)
 
-        logA = self.fc_var(result)
-        logA = F.relu(logA) + 1e-10
-        bs = logA.shape[0]
-        std = torch.zeros((bs, 144, 144)).cuda()
+        A = self.fc_var(result)
+        A = F.relu(A) + 1e-10
+        bs = A.shape[0]
+        U = torch.zeros((bs, 144, 144)).cuda()
         indices = torch.triu_indices(144, 144)
-        std[:, indices[0], indices[1]] = logA  # set upper matrix
-        std[:, indices[1], indices[0]] = logA  # set lower matrix
+        U[:, indices[0], indices[1]] = A  # set upper matrix
+        # U[:, indices[1], indices[0]] = A  # set upper matrix
 
         # logA = logA.view(-1, 144, 144)
 
@@ -278,7 +277,7 @@ class TreeVAE(BaseVAE):
         # if torch.linalg.eigvals(torch.exp(0.5 * logvar)).real.min() < 0:
         #    wtf
 
-        return [mu, std]
+        return [mu, U]
 
     def decode(self, z: Tensor) -> Tensor:
         """
@@ -293,7 +292,7 @@ class TreeVAE(BaseVAE):
         result = F.softmax(result, dim=1)
         return result
 
-    def reparameterize(self, mu: Tensor, logA: Tensor) -> Tensor:
+    def reparameterize(self, mu: Tensor, U: Tensor) -> Tensor:
         """
         Reparameterization trick to sample from N(mu, var) from
         N(0,1).
@@ -301,10 +300,10 @@ class TreeVAE(BaseVAE):
         :param logvar: (Tensor) Standard deviation of the latent Gaussian [B x D]
         :return: (Tensor) [B x D]
         """
-        std = logA
+        # std = logA
         # heavily based on https://juanitorduz.github.io/multivariate_normal/
 
-        # L = torch.linalg.cholesky(std)
+        # L = torch.linalg.cholesky(logvar)
         # Now torch.matmul(L[0],L[0].transpose(0,1)) should be very close to std_hat[0]
 
         eps = torch.randn_like(mu)
@@ -312,7 +311,7 @@ class TreeVAE(BaseVAE):
         # multiply each of the matrices for each in batch, with vector of eps
 
         # samples = mu + torch.einsum("...jk,...ik", L, eps)
-        samples = mu + torch.einsum("...jk,...ik", std, eps)
+        samples = mu + torch.einsum("...jk,...ik", U, eps)
 
         return samples
 
@@ -333,11 +332,13 @@ class TreeVAE(BaseVAE):
         input = args[1]
         input = input.view(-1, 5, 836, 144)
         mu = args[2]
-        logA = args[3]
+        U = args[3]
         labels = kwargs["labels"]
 
-        std = logA  # 0.5 since std**2 = var
-        cov_q = torch.matmul(std, std.transpose(2, 1))
+        # std = logA  # 0.5 since std**2 = var
+        cov_q = torch.matmul(
+            U, U.transpose(2, 1)
+        )  # torch.matmul(std, std.transpose(2, 1))
         logvar = torch.log(cov_q)
 
         kld_weight = kwargs["M_N"]  # Account for the minibatch samples from the dataset
