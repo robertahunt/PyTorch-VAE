@@ -90,12 +90,15 @@ class TreeVAE(BaseVAE):
         self.species, self.T = self.calc_T()
 
         # self.alpha = nn.Parameter(torch.tensor(0.5))
+        self.ordered_genera = self.get_ordered_genera()
+        self.reordered_indices = [self.species.index(x) for x in self.ordered_genera]
 
         self.T = torch.tensor(self.T).cuda().float()
         self.T = self.T / self.T.max()
+        self.T = self.reorder_indices(self.T)
+        self.species = self.get_ordered_genera()
+
         self.inv_T = self.T.inverse()
-        self.ordered_genera = self.get_ordered_genera()
-        self.reordered_indices = [self.species.index(x) for x in self.ordered_genera]
 
         modules = []
         if hidden_dims is None:
@@ -123,7 +126,8 @@ class TreeVAE(BaseVAE):
 
         self.encoder = nn.Sequential(*modules)
         self.fc_mu = nn.Linear(16 * 144, latent_dim * 6)
-        self.fc_var = nn.Linear(16 * 144, (latent_dim) ** 2)
+        # self.fc_var = nn.Linear(16 * 144, (latent_dim) ** 2)
+        self.fc_var = nn.Linear(16 * 144, int((latent_dim**2 + latent_dim) / 2))
 
         self.decoder_input = nn.Linear(latent_dim, 16 * 144)
 
@@ -160,12 +164,15 @@ class TreeVAE(BaseVAE):
 
         self.decoder = nn.Sequential(*modules)
 
+    def reorder_indices(self, A):
+        return A[np.ix_(self.reordered_indices, self.reordered_indices)]
+
     def heatmap(self, cov):
         import seaborn as sns
         import matplotlib.pyplot as plt
 
         plt.figure()
-        sns.heatmap(cov[np.ix_(self.reordered_indices, self.reordered_indices)])
+        sns.heatmap(cov)
 
     def get_ordered_genera(self):
         # fmt: off
@@ -246,8 +253,16 @@ class TreeVAE(BaseVAE):
         # Split the result into mu and var components
         # of the latent Gaussian distribution
         mu = self.fc_mu(result).view(-1, 6, 144)
+
         logA = self.fc_var(result)
-        logA = logA.view(-1, 144, 144)
+        logA = F.relu(logA) + 1e-10
+        bs = logA.shape[0]
+        std = torch.zeros((bs, 144, 144)).cuda()
+        indices = torch.triu_indices(144, 144)
+        std[:, indices[0], indices[1]] = logA  # set upper matrix
+        std[:, indices[1], indices[0]] = logA  # set lower matrix
+
+        # logA = logA.view(-1, 144, 144)
 
         # To make sure std is a positive definite matrix,
         # multiply it by it's transpose, add a small eps to the diagonal,
@@ -263,7 +278,7 @@ class TreeVAE(BaseVAE):
         # if torch.linalg.eigvals(torch.exp(0.5 * logvar)).real.min() < 0:
         #    wtf
 
-        return [mu, logA]
+        return [mu, std]
 
     def decode(self, z: Tensor) -> Tensor:
         """
@@ -286,7 +301,7 @@ class TreeVAE(BaseVAE):
         :param logvar: (Tensor) Standard deviation of the latent Gaussian [B x D]
         :return: (Tensor) [B x D]
         """
-        std = torch.exp(0.5 * logA)
+        std = logA
         # heavily based on https://juanitorduz.github.io/multivariate_normal/
 
         # L = torch.linalg.cholesky(std)
@@ -321,7 +336,7 @@ class TreeVAE(BaseVAE):
         logA = args[3]
         labels = kwargs["labels"]
 
-        std = torch.exp(0.5 * logA)  # 0.5 since std**2 = var
+        std = logA  # 0.5 since std**2 = var
         cov_q = torch.matmul(std, std.transpose(2, 1))
         logvar = torch.log(cov_q)
 
@@ -334,11 +349,10 @@ class TreeVAE(BaseVAE):
         def my_matmul(A, B):
             return torch.einsum("...ik,...jk", A, B)
 
-        kld_loss = torch.mean(
-            0.5
-            * torch.mean(
+        kld_loss = 0.5 * torch.mean(
+            torch.mean(
                 # +trace(torch.log(self.T)) # constant
-                -torch.sum(torch.linalg.eigvalsh(logvar).real, dim=1).unsqueeze(1)
+                -trace(logvar).unsqueeze(1)
                 + torch.diagonal(
                     my_matmul(my_matmul(mu, self.inv_T), mu), dim1=1, dim2=2
                 )
