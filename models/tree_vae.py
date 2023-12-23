@@ -129,7 +129,7 @@ class TreeVAE(BaseVAE):
         self.encoder = nn.Sequential(*modules)
         self.fc_mu = nn.Linear(16 * 144, latent_dim * 6)
         # self.fc_var = nn.Linear(16 * 144, (latent_dim) ** 2)
-        self.fc_var = nn.Linear(16 * 144, int((latent_dim**2 + latent_dim) / 2))
+        # self.fc_var = nn.Linear(16 * 144, int((latent_dim**2 + latent_dim) / 2))
 
         self.decoder_input = nn.Linear(latent_dim, 16 * 144)
 
@@ -251,14 +251,14 @@ class TreeVAE(BaseVAE):
 
         # Split the result into mu and var components
         # of the latent Gaussian distribution
-        mu = self.fc_mu(result).view(-1, 6, 144)
+        X = self.fc_mu(result).view(-1, 6, 144)
 
-        A = self.fc_var(result)
-        A = F.relu(A) + 1e-10
-        bs = A.shape[0]
-        U = torch.zeros((bs, 144, 144)).cuda()
-        indices = torch.triu_indices(144, 144)
-        U[:, indices[0], indices[1]] = A  # set upper matrix
+        # A = self.fc_var(result)
+        # A = F.relu(A) + 1e-10
+        # bs = A.shape[0]
+        # U = torch.zeros((bs, 144, 144)).cuda()
+        # indices = torch.triu_indices(144, 144)
+        # U[:, indices[0], indices[1]] = A  # set upper matrix
         # U[:, indices[1], indices[0]] = A  # set upper matrix
 
         # logA = logA.view(-1, 144, 144)
@@ -277,7 +277,7 @@ class TreeVAE(BaseVAE):
         # if torch.linalg.eigvals(torch.exp(0.5 * logvar)).real.min() < 0:
         #    wtf
 
-        return [mu, U]
+        return X
 
     def decode(self, z: Tensor) -> Tensor:
         """
@@ -292,7 +292,7 @@ class TreeVAE(BaseVAE):
         result = F.softmax(result, dim=1)
         return result
 
-    def reparameterize(self, mu: Tensor, U: Tensor) -> Tensor:
+    def reparameterize(self, X: Tensor) -> Tensor:
         """
         Reparameterization trick to sample from N(mu, var) from
         N(0,1).
@@ -306,19 +306,19 @@ class TreeVAE(BaseVAE):
         # L = torch.linalg.cholesky(logvar)
         # Now torch.matmul(L[0],L[0].transpose(0,1)) should be very close to std_hat[0]
 
-        eps = torch.randn_like(mu)
+        eps = torch.randn_like(X)
 
         # multiply each of the matrices for each in batch, with vector of eps
 
         # samples = mu + torch.einsum("...jk,...ik", L, eps)
-        samples = mu + torch.einsum("...jk,...ik", U, eps)
+        samples = X + 1e-10 * eps
 
         return samples
 
     def forward(self, input: Tensor, **kwargs) -> List[Tensor]:
-        mu, log_var = self.encode(input)
-        z = self.reparameterize(mu, log_var)
-        return [self.decode(z), input, mu, log_var]
+        mu = self.encode(input)
+        z = self.reparameterize(mu)
+        return [self.decode(z), input, mu]
 
     def loss_function(self, *args, **kwargs) -> dict:
         """
@@ -331,14 +331,15 @@ class TreeVAE(BaseVAE):
         recons = args[0]
         input = args[1]
         input = input.view(-1, 5, 836, 144)
-        mu = args[2]
-        U = args[3]
+        X = args[2]
+        # U = args[3]
         labels = kwargs["labels"]
 
         # std = logA  # 0.5 since std**2 = var
-        cov_q = torch.matmul(
-            U, U.transpose(2, 1)
-        )  # torch.matmul(std, std.transpose(2, 1))
+        A = X - X.mean(axis=1).unsqueeze(
+            1
+        )  # subtract the average character for each genus
+        cov_q = torch.matmul(A.transpose(2, 1), A)
         logvar = torch.log(cov_q)
 
         kld_weight = kwargs["M_N"]  # Account for the minibatch samples from the dataset
@@ -354,9 +355,7 @@ class TreeVAE(BaseVAE):
             torch.mean(
                 # +trace(torch.log(self.T)) # constant
                 -trace(logvar).unsqueeze(1)
-                + torch.diagonal(
-                    my_matmul(my_matmul(mu, self.inv_T), mu), dim1=1, dim2=2
-                )
+                + torch.diagonal(my_matmul(my_matmul(X, self.inv_T), X), dim1=1, dim2=2)
                 + trace(torch.matmul(self.inv_T, cov_q)).unsqueeze(1)
                 - 144,
                 dim=1,
