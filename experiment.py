@@ -2,6 +2,8 @@ import os
 import math
 import torch
 import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
 from torch import optim
 from models import BaseVAE
 from models.types_ import *
@@ -97,6 +99,10 @@ class VAEXperiment(pl.LightningModule):
             (val_loader, "val"),
             (test_loader, "test"),
         ):
+            inp_path = os.path.join(self.logger.log_dir, "Latent", f"{name}_inp.npy")
+            recons_path = os.path.join(
+                self.logger.log_dir, "Latent", f"{name}_recons.npy"
+            )
             mu_path = os.path.join(self.logger.log_dir, "Latent", f"{name}_mu.npy")
             log_var_path = os.path.join(
                 self.logger.log_dir, "Latent", f"{name}_log_var.npy"
@@ -111,14 +117,27 @@ class VAEXperiment(pl.LightningModule):
             fps = np.empty([0, latent_dim])
             for i, batch in enumerate(loader):
                 images, _fps, _ = batch
-                mu, log_var = self.model.encode(images.to(self.curr_device).float())
+                recons, inp, mu, A = self.model(images.to(self.curr_device).float())
+                mu = mu.reshape(-1, 6, 144)
                 mus = np.concatenate([mus, mu.detach().cpu().numpy()])
+                # A = mu - mu.mean(axis=1).unsqueeze(1)
+                log_var = torch.matmul(A, A.transpose(2, 1))
                 log_vars = np.concatenate([log_vars, log_var.detach().cpu().numpy()])
                 fps = np.concatenate([fps, np.array(_fps).squeeze().transpose(1, 0)])
                 break
+            np.save(inp_path, inp.detach().cpu().numpy())
+            np.save(recons_path, recons.detach().cpu().numpy())
             np.save(mu_path, mus)
             np.save(log_var_path, log_vars)
             np.save(fps_path, fps)
+
+            B = torch.matmul(log_var[0], log_var[0].T)
+            plt.figure()
+            sns.heatmap(B.cpu().detach().numpy())
+            plt.savefig(
+                os.path.join(self.logger.log_dir, "Latent", f"{name}_cov_q.png")
+            )
+            plt.close()
 
     def save_latent_space(self):
         print("Saving Latent Space...")
