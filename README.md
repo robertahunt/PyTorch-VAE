@@ -1,4 +1,11 @@
 <h1 align="center">
+  <b>Fork of PyTorch VAE</b><br>
+</h1>
+This is a fork of the PyTorch-VAE git repository (https://github.com/AntixK/PyTorch-VAE) modified for use in my PhD thesis, Chapter 5. 
+
+
+
+<h1 align="center">
   <b>PyTorch VAE</b><br>
 </h1>
 
