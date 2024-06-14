@@ -10,7 +10,7 @@ from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning import seed_everything
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
-from dataset import VAEDataset, RoveVAEDataset, BIOSCANVAEDataset, BIOSCANTreeVAEDataset
+from dataset import VAEDataset, RoveVAEDataset, BIOSCANVAEDataset, BIOSCANTreeVAEDataset, BIOSCANPMLDataset, SimDataModule
 from pytorch_lightning.strategies import DDPStrategy
 
 
@@ -51,7 +51,7 @@ if config["model_params"].get("checkpoint", None) is not None:
 else:
     experiment = VAEXperiment(model, config["exp_params"])
 
-data = BIOSCANTreeVAEDataset(
+data = SimDataModule(
     **config["data_params"], pin_memory=config["trainer_params"]["accelerator"] == "gpu"
 )
 
@@ -67,7 +67,7 @@ runner = Trainer(
             save_last=True,
         ),
     ],
-    strategy="ddp",
+    strategy="ddp_find_unused_parameters_true",
     use_distributed_sampler=False,
     **config["trainer_params"],
 )
@@ -78,6 +78,9 @@ Path(f"{tb_logger.log_dir}/Samples").mkdir(exist_ok=True, parents=True)
 Path(f"{tb_logger.log_dir}/Reconstructions").mkdir(exist_ok=True, parents=True)
 Path(f"{tb_logger.log_dir}/Latent").mkdir(exist_ok=True, parents=True)
 
+config_fp = f"{tb_logger.log_dir}/config.yaml"
+with open(config_fp, 'w') as outfile:
+    yaml.dump(config, outfile, default_flow_style=False)
 
 print(f"======= Training {config['model_params']['name']} =======")
 runner.fit(experiment, datamodule=data)

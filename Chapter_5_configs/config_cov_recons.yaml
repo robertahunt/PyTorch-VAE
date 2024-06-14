@@ -1,0 +1,45 @@
+data_params:
+  alignment_path: /mnt/newterra/Dropbox/04. PhD/06. Research Projects/11. Simulate
+    Dependencies/phyload/simulation_study/out/00_test_specimen_iid200_epi200_d1000_seed0/merged_aln.nex
+  batch_size: 64
+  num_workers: 4
+  samples_per_class: 2
+  tree_path: /mnt/newterra/Dropbox/04. PhD/06. Research Projects/11. Simulate Dependencies/phyload/simulation_study/simulation_scripts/simulation_tree_tunicates.tre
+  use_triplet_sampling: true
+exp_params:
+  LR: 0.0002
+  betas:
+  - 0.5
+  - 0.999
+  losses:
+  - - 1
+    - mse_covariance
+  - - 1
+    - recons
+  manual_seed: 1265
+  scheduler_gamma: 0.95
+  weight_decay: 0.0
+logging_params:
+  name: PMLVAE
+  save_dir: logs/
+model_params:
+  decoder_arch:
+  - 100
+  - 2000
+  - 2000
+  distance_multiplier: 10
+  encoder_arch:
+  - 2000
+  - 1500
+  - 1500
+  hierarchical: false
+  in_channels: 5
+  n_characters: 30
+  name: PMLAESIM
+  phylo_path: /mnt/newterra/Dropbox/04. PhD/06. Research Projects/11. Simulate Dependencies/phyload/simulation_study/simulation_scripts/simulation_tree_tunicates.tre
+  seq_length: 400
+  triplet_margin: 0.1
+trainer_params:
+  accelerator: gpu
+  check_val_every_n_epoch: 10
+  max_epochs: 200

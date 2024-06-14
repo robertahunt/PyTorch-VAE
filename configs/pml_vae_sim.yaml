@@ -1,0 +1,38 @@
+model_params:
+  name: 'PMLVAESIM'
+  in_channels: 5
+  n_characters: 30
+  seq_length: 400
+  encoder_arch: [2000, 1500, 1500]
+  decoder_arch: [100, 2000, 2000]
+  triplet_margin: 0.1
+  hierarchical: False
+  phylo_path: "/mnt/newterra/Dropbox/04. PhD/06. Research Projects/11. Simulate Dependencies/phyload/simulation_study/simulation_scripts/simulation_tree_tunicates.tre"
+  # checkpoint: "logs/PMLVAESIM/version_5_thesis_kldx100/checkpoints/last.ckpt"
+
+data_params:
+  alignment_path: "/mnt/newterra/Dropbox/04. PhD/06. Research Projects/11. Simulate Dependencies/phyload/simulation_study/out/00_test_specimen_iid200_epi200_d1000_seed0/merged_aln.nex"
+  tree_path: "/mnt/newterra/Dropbox/04. PhD/06. Research Projects/11. Simulate Dependencies/phyload/simulation_study/simulation_scripts/simulation_tree_tunicates.tre"
+  batch_size: 64
+  num_workers: 4
+  use_triplet_sampling: True
+  samples_per_class: 4
+
+
+exp_params:
+  LR: 0.0002
+  betas:  [0.5, 0.999]
+  weight_decay: 0.0
+  scheduler_gamma: 0.95
+  manual_seed: 1265
+  losses: [[1, 'recons'],[0.01, 'kld']] # ,[0.0001, "kld"] [[1,"recons"],[1, "kld"],[1, "triplet"],[1, "hier_triplet"]],[0.1,"kld_indep_traits"]
+
+trainer_params:
+  accelerator: "gpu"
+  max_epochs: 200
+  check_val_every_n_epoch: 10
+
+logging_params:
+  save_dir: "logs/"
+  name: "PMLVAE"
+  

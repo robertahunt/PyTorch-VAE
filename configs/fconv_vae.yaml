@@ -1,0 +1,37 @@
+model_params:
+  name: 'FPMLVAE'
+  in_channels: 5
+  n_characters: 200
+  phylo_path: "BioscanMediumSpecies/phylogeny.nh"
+  triplet_margin: 0.1
+  # checkpoint: "logs/VanillaVAE/version_177_continue_500_more_epochs/checkpoints/last.ckpt"
+
+data_params:
+  data_path: "BioscanMediumSpecies/"
+  train_batch_size: 64
+  val_batch_size:  64
+  patch_size: 64
+  num_workers: 4
+  use_triplet_sampling: true
+
+
+exp_params:
+  LR: 0.0001
+  betas:  [0.5, 0.999]
+  weight_decay: 0.0
+  scheduler_gamma: 0.95
+  submodel: 'discriminator'
+  LR_2: 0.005
+  scheduler_gamma_2: 0.95
+  manual_seed: 1265
+  losses: [[100,"recons"],[1,"disc_tc"],[0.001,"tc"],[1000, "triplet"]] # ,[0.0001, "kld"] [[1,"recons"],[1, "kld"],[1, "hier_triplet"]],[0.1,"kld_indep_traits"]
+
+trainer_params:
+  accelerator: "gpu"
+  max_epochs: 200
+  check_val_every_n_epoch: 10
+
+logging_params:
+  save_dir: "logs/"
+  name: "PMLVAE"
+  

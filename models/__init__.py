@@ -24,8 +24,12 @@ from .betatc_vae import *
 from .dip_vae import *
 from .dna_vae import *
 from .tree_vae import *
-
-
+from .pml_vae import *
+from .fpml_vae import *
+from .fconvvae import *
+from .pml_vae_sim import *
+from .pml_ae_sim import *
+from .pml_vae_full_sim import *
 # Aliases
 VAE = VanillaVAE
 GaussianVAE = VanillaVAE
@@ -42,6 +46,12 @@ vae_models = {
     "DNAVAE": DNAVAE,
     "DFCVAE": DFCVAE,
     "DIPVAE": DIPVAE,
+    "PMLVAE": PMLVAE,
+    "PMLAESIM": PMLAESIM,
+    "PMLVAESIM": PMLVAESIM,
+    "PMLVAEFULLSIM": PMLVAEFULLSIM,
+    "FPMLVAE": FPMLVAE,
+    "FCONVVAE": FCONVVAE,
     "TreeVAE": TreeVAE,
     "BetaVAE": BetaVAE,
     "InfoVAE": InfoVAE,

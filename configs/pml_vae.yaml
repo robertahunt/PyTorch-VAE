@@ -1,0 +1,31 @@
+model_params:
+  name: 'TreeVAE'
+  in_channels: 5
+  n_characters: 25
+  phylo_path: "BioscanMediumSpecies/phylogeny.nh"
+  # checkpoint: "logs/VanillaVAE/version_177_continue_500_more_epochs/checkpoints/last.ckpt"
+
+data_params:
+  data_path: "BioscanMediumSpecies/"
+  train_batch_size: 16
+  val_batch_size:  16
+  patch_size: 64
+  num_workers: 4
+
+
+exp_params:
+  LR: 0.005
+  weight_decay: 0.0
+  scheduler_gamma: 0.95
+  manual_seed: 1265
+  losses: [[1,"recons"],[1, "kld"]] # [[1,"recons"],[1, "kld"],[1, "triplet"],[1, "hier_triplet"]],[0.1,"kld_indep_traits"]
+
+trainer_params:
+  accelerator: "gpu"
+  max_epochs: 200
+  check_val_every_n_epoch: 1
+
+logging_params:
+  save_dir: "logs/"
+  name: "TreeVAE"
+  
